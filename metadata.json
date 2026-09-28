@@ -1,0 +1,7 @@
+{
+  "name": "Inventory OCR & Google Sheets Sync",
+  "description": "ระบบ OCR สแกนบิล Inventory สกัดข้อมูลรหัส GPU/TPU, คำนวณ VAT 7% บันทึกลง Google Sheets และ Google Drive พร้อมแจ้งเตือนผ่าน Line Notify ด้วย Google Apps Script",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
