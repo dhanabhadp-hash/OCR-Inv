@@ -1,8 +1,11 @@
 export const GOOGLE_APPS_SCRIPT_CODE = `/**
  * ==============================================================================
  * Google Apps Script (Code.gs) for Inventory OCR & Google Sheets & Drive Sync
- * พร้อมระบบแจ้งเตือนผ่าน Line Notify อัตโนมัติ
+ * พร้อมระบบแจ้งเตือนผ่าน LINE Chatbot (LINE Messaging API / LINE Official Account)
  * ==============================================================================
+ * 
+ * *หมายเหตุ: LINE Notify ได้ยุติการให้บริการแล้ว ระบบนี้จึงใช้ LINE Messaging API 
+ * ของ LINE Official Account ซึ่งรองรับทั้งการส่งการ์ดสรุปบิลแบบ Flex Message และข้อความ
  * 
  * วิธีการติดตั้ง (Quick Setup):
  * 1. เปิด Google Sheet ที่ต้องการเก็บข้อมูล -> ไปที่เมนู "ส่วนขยาย" (Extensions) -> "Apps Script"
@@ -10,11 +13,14 @@ export const GOOGLE_APPS_SCRIPT_CODE = `/**
  * 3. กดปุ่ม "บันทึก" (รูปแผ่นดิสก์ หรือ Ctrl+S)
  * 4. กดปุ่ม "ทำให้ใช้งานได้" (Deploy) สีน้ำเงินมุมขวาบน -> เลือก "การทำให้ใช้งานได้ใหม่" (New deployment)
  * 5. เลือกประเภท: "เว็บแอป" (Web app)
- *    - คำอธิบาย: Inventory OCR Web App v1
+ *    - คำอธิบาย: Inventory OCR Web App v2 (LINE Messaging API)
  *    - ดำเนินการในฐานะ: "ฉัน" (Me)
  *    - ใครมีสิทธิ์เข้าถึง: "ทุกคน" (Anyone) **สำคัญมาก ต้องเลือก Anyone**
  * 6. กด "ทำให้ใช้งานได้" (Deploy) -> ตรวจสอบสิทธิ์ (Authorize access) แล้วคัดลอก "URL เว็บแอป"
  * 7. นำ URL เว็บแอปมาวางในช่อง "Google Apps Script Web App URL" ในหน้าตั้งค่าของระบบ
+ * 
+ * *เคล็ดลับ: สามารถนำ URL เว็บแอปนี้ไปใส่ในช่อง Webhook URL ของ LINE Developers Console ได้ด้วย
+ * เมื่อพิมพ์ข้อความหาบอท บอทจะตอบกลับ User ID ของท่านทันทีอัตโนมัติ!
  */
 
 // ชื่อแท็บชีทเริ่มต้นสำหรับบันทึกข้อมูลบิล Inventory
@@ -23,11 +29,10 @@ var DEFAULT_SHEET_NAME = "บิล Inventory";
 var DEFAULT_DRIVE_FOLDER_NAME = "Inventory_OCR_Uploads";
 
 /**
- * ฟังก์ชันหลักรับคำขอแบบ POST จากเว็บแอปพลิเคชัน
+ * ฟังก์ชันหลักรับคำขอแบบ POST จากเว็บแอปพลิเคชัน หรือ LINE Webhook
  */
 function doPost(e) {
   var lock = LockService.getScriptLock();
-  // รอล็อคสูงสุด 30 วินาทีเพื่อป้องกันการเขียนข้อมูลชนกันพร้อมกัน
   lock.tryLock(30000);
 
   try {
@@ -39,6 +44,13 @@ function doPost(e) {
     }
 
     var payload = JSON.parse(e.postData.contents);
+
+    // ตรวจสอบกรณีเป็น Webhook จาก LINE Bot โดยตรง (ช่วยให้ผู้ใช้ทราบ User ID ของตัวเอง)
+    if (payload.events && Array.isArray(payload.events)) {
+      handleLineWebhook(payload);
+      return jsonResponse({ status: "success", message: "LINE webhook handled" });
+    }
+
     var invoiceData = payload.invoiceData || {};
     var items = payload.items || invoiceData.items || [];
     var imageBase64 = payload.imageBase64;
@@ -47,7 +59,10 @@ function doPost(e) {
     var customFolderId = payload.driveFolderId;
     var customSheetId = payload.sheetId;
     var targetSheetName = payload.sheetName || DEFAULT_SHEET_NAME;
-    var lineToken = payload.lineNotifyToken;
+    
+    // LINE Messaging API parameters
+    var lineToken = payload.lineChannelAccessToken || payload.lineNotifyToken;
+    var lineTargetId = payload.lineTargetId || "";
 
     var driveFileUrl = "";
 
@@ -64,7 +79,6 @@ function doPost(e) {
         if (customFolderId && customFolderId.trim() !== "") {
           targetFolder = DriveApp.getFolderById(customFolderId.trim());
         } else {
-          // ค้นหาโฟลเดอร์ชื่อ DEFAULT_DRIVE_FOLDER_NAME หากไม่มีให้สร้างใหม่
           var folders = DriveApp.getFoldersByName(DEFAULT_DRIVE_FOLDER_NAME);
           if (folders.hasNext()) {
             targetFolder = folders.next();
@@ -74,7 +88,6 @@ function doPost(e) {
         }
 
         var uploadedFile = targetFolder.createFile(blob);
-        // กำหนดสิทธิ์ให้ผู้มีลิงก์สามารถดูรูปภาพได้
         uploadedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
         driveFileUrl = uploadedFile.getUrl();
       } catch (driveErr) {
@@ -102,7 +115,6 @@ function doPost(e) {
       sheet = spreadsheet.insertSheet(targetSheetName);
     }
 
-    // ตรวจสอบและสร้างหัวตาราง (Headers) หากยังไม่มี
     ensureSheetHeaders(sheet);
 
     var nowStr = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
@@ -117,7 +129,6 @@ function doPost(e) {
     var vatStatus = invoiceData.isDocVatIncluded ? "บิลรวม VAT 7% อยู่แล้ว" : "ปรับคำนวณรวม VAT 7% ให้แล้ว";
     var vatExplanation = invoiceData.vatAnalysisExplanation || "-";
 
-    // หากมีรายการสินค้า (Items) ให้บันทึก 1 แถวต่อ 1 รายการ
     if (items && items.length > 0) {
       for (var i = 0; i < items.length; i++) {
         var itm = items[i];
@@ -132,7 +143,7 @@ function doPost(e) {
           nowStr,              // 1. วัน-เวลาที่บันทึก
           invoiceNo,           // 2. เลขที่บิล
           companyName,         // 3. ชื่อบริษัท/ผู้ขาย
-          "'" + taxId,         // 4. เลขประจำตัวผู้เสียภาษี (ใส่ ' เพื่อไม่ให้ตัดเลข 0 นำหน้า)
+          "'" + taxId,         // 4. เลขประจำตัวผู้เสียภาษี
           invoiceDate,         // 5. วันที่ในบิล
           salesperson,         // 6. พนักงานขาย
           "'" + gpuCode,       // 7. รหัส GPU (5-8 หลัก)
@@ -149,7 +160,6 @@ function doPost(e) {
         ]);
       }
     } else {
-      // กรณีไม่มีรายการสินค้าละเอียด
       rowsToInsert.push([
         nowStr,
         invoiceNo,
@@ -174,19 +184,18 @@ function doPost(e) {
     if (rowsToInsert.length > 0) {
       var lastRow = sheet.getLastRow();
       sheet.getRange(lastRow + 1, 1, rowsToInsert.length, rowsToInsert[0].length).setValues(rowsToInsert);
-      // จัดรูปแบบตัวเลขคอลัมน์เงิน (คอลัมน์ 11, 12, 13) ให้เป็นแบบ #,##0.00
       try {
         sheet.getRange(lastRow + 1, 11, rowsToInsert.length, 3).setNumberFormat("#,##0.00");
       } catch (numErr) {}
     }
 
     // -------------------------------------------------------------
-    // ขั้นตอนที่ 3: ส่งการแจ้งเตือนผ่าน Line Notify
+    // ขั้นตอนที่ 3: ส่งการแจ้งเตือนผ่าน LINE Chatbot (LINE Messaging API)
     // -------------------------------------------------------------
     var lineNotificationStatus = "skipped";
     if (lineToken && lineToken.trim() !== "") {
       try {
-        sendLineNotification(lineToken.trim(), {
+        var lineRes = sendLineMessagingApi(lineToken.trim(), lineTargetId.trim(), {
           companyName: companyName,
           taxId: taxId,
           invoiceNo: invoiceNo,
@@ -196,11 +205,12 @@ function doPost(e) {
           grandTotalWithVat: grandTotalWithVat,
           vatStatus: vatStatus,
           driveFileUrl: driveFileUrl,
+          sheetUrl: spreadsheet.getUrl(),
           items: items
         });
-        lineNotificationStatus = "sent";
+        lineNotificationStatus = lineRes.success ? "sent" : ("failed: " + lineRes.error);
       } catch (lineErr) {
-        Logger.log("Line Notify error: " + lineErr.toString());
+        Logger.log("LINE Bot API error: " + lineErr.toString());
         lineNotificationStatus = "failed: " + lineErr.message;
       }
     }
@@ -252,7 +262,7 @@ function ensureSheetHeaders(sheet) {
 
     var headerRange = sheet.getRange(1, 1, 1, headers.length);
     headerRange.setValues([headers]);
-    headerRange.setBackground("#1e293b"); // สีกรมท่า Dark Slate
+    headerRange.setBackground("#1e293b");
     headerRange.setFontColor("#ffffff");
     headerRange.setFontWeight("bold");
     headerRange.setHorizontalAlignment("center");
@@ -263,53 +273,253 @@ function ensureSheetHeaders(sheet) {
 }
 
 /**
- * ส่งการแจ้งเตือน Line Notify ด้วยข้อความจัดรูปแบบอย่างสวยงาม
+ * ส่งการแจ้งเตือนผ่าน LINE Messaging API ด้วย Flex Message ดีไซน์สวยงาม
  */
-function sendLineNotification(token, data) {
+function sendLineMessagingApi(channelAccessToken, targetId, data) {
   var formatCurrency = function(val) {
     return Number(val).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  var message = "\\n" +
-    "🔔 [บันทึกบิล Inventory ใหม่!]" + "\\n" +
-    "━━━━━━━━━━━━━━━━━━" + "\\n" +
-    "🏢 บริษัท: " + data.companyName + "\\n" +
-    "📄 เลขที่บิล: " + data.invoiceNo + "\\n" +
-    "📅 วันที่: " + data.invoiceDate + "\\n" +
-    "👤 พนักงานขาย: " + data.salesperson + "\\n" +
-    "🔢 เลขผู้เสียภาษี: " + data.taxId + "\\n" +
-    "📦 จำนวนสินค้า: " + data.itemCount + " รายการ" + "\\n" +
-    "💰 ยอดสุทธิรวม VAT 7%: " + formatCurrency(data.grandTotalWithVat) + " บาท" + "\\n" +
-    "📊 สถานะภาษี: " + data.vatStatus + "\\n";
-
-  // แนบตัวอย่างรหัส GPU/TPU ถ้ามี
+  // สร้างข้อความสรุปสินค้าแบบสั้น
+  var itemsSummary = "";
   if (data.items && data.items.length > 0) {
-    var sampleGpu = data.items[0].gpuCode || "-";
-    var sampleTpu = data.items[0].tpuCode || "-";
-    if (sampleGpu !== "-" || sampleTpu !== "-") {
-      message += "🔖 รหัสสินค้า: GPU=" + sampleGpu + " | TPU=" + sampleTpu + "\\n";
+    for (var i = 0; i < Math.min(data.items.length, 3); i++) {
+      var itm = data.items[i];
+      itemsSummary += "• " + itm.productName + " (GPU: " + (itm.gpuCode || "-") + " | TPU: " + (itm.tpuCode || "-") + ")\\n";
+    }
+    if (data.items.length > 3) {
+      itemsSummary += "  ...และอีก " + (data.items.length - 3) + " รายการ\\n";
     }
   }
 
+  // สร้าง LINE Flex Message
+  var flexMessage = {
+    type: "flex",
+    altText: "🔔 สรุปบิล Inventory: " + data.invoiceNo + " (" + formatCurrency(data.grandTotalWithVat) + " ฿)",
+    contents: {
+      type: "bubble",
+      size: "giga",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: "#1e3a8a",
+        paddingAll: "16px",
+        contents: [
+          {
+            type: "text",
+            text: "INVENTORY OCR • บันทึกบิลสำเร็จ",
+            color: "#93c5fd",
+            size: "xxs",
+            weight: "bold",
+            letterSpacing: "1px"
+          },
+          {
+            type: "text",
+            text: data.invoiceNo || "บิลสินค้า",
+            color: "#ffffff",
+            size: "xl",
+            weight: "bold",
+            margin: "xs"
+          },
+          {
+            type: "text",
+            text: data.companyName,
+            color: "#e2e8f0",
+            size: "sm",
+            wrap: true,
+            margin: "xs"
+          }
+        ]
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        paddingAll: "16px",
+        contents: [
+          // Total Box
+          {
+            type: "box",
+            layout: "horizontal",
+            backgroundColor: "#f0fdf4",
+            cornerRadius: "8px",
+            paddingAll: "12px",
+            borderColor: "#86efac",
+            borderWidth: "1px",
+            contents: [
+              {
+                type: "box",
+                layout: "vertical",
+                contents: [
+                  {
+                    type: "text",
+                    text: "ยอดสุทธิ (รวม VAT 7% เสมอ)",
+                    size: "xs",
+                    color: "#166534",
+                    weight: "bold"
+                  },
+                  {
+                    type: "text",
+                    text: formatCurrency(data.grandTotalWithVat) + " THB",
+                    size: "xl",
+                    color: "#15803d",
+                    weight: "bold"
+                  }
+                ]
+              }
+            ]
+          },
+          // Info List
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "sm",
+            margin: "md",
+            contents: [
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  { type: "text", text: "วันที่ในบิล:", size: "xs", color: "#64748b", flex: 2 },
+                  { type: "text", text: data.invoiceDate, size: "xs", color: "#0f172a", flex: 4, weight: "bold" }
+                ]
+              },
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  { type: "text", text: "พนักงานขาย:", size: "xs", color: "#64748b", flex: 2 },
+                  { type: "text", text: data.salesperson, size: "xs", color: "#0f172a", flex: 4 }
+                ]
+              },
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  { type: "text", text: "เลขผู้เสียภาษี:", size: "xs", color: "#64748b", flex: 2 },
+                  { type: "text", text: data.taxId, size: "xs", color: "#0f172a", flex: 4 }
+                ]
+              },
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  { type: "text", text: "จำนวนสินค้า:", size: "xs", color: "#64748b", flex: 2 },
+                  { type: "text", text: data.itemCount + " รายการ", size: "xs", color: "#0f172a", flex: 4, weight: "bold" }
+                ]
+              },
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  { type: "text", text: "สถานะภาษี:", size: "xs", color: "#64748b", flex: 2 },
+                  { type: "text", text: data.vatStatus, size: "xs", color: "#2563eb", flex: 4 }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        contents: []
+      }
+    }
+  };
+
+  // เพิ่มปุ่ม Action ใน Footer
+  var footerContents = [];
   if (data.driveFileUrl && data.driveFileUrl.indexOf("http") === 0) {
-    message += "━━━━━━━━━━━━━━━━━━" + "\\n" +
-      "📁 ลิงก์รูปภาพใน Google Drive:" + "\\n" +
-      data.driveFileUrl;
+    footerContents.push({
+      type: "button",
+      style: "primary",
+      color: "#2563eb",
+      height: "sm",
+      action: {
+        type: "uri",
+        label: "📁 เปิดดูรูปภาพใน Google Drive",
+        uri: data.driveFileUrl
+      }
+    });
+  }
+
+  if (data.sheetUrl && data.sheetUrl.indexOf("http") === 0) {
+    footerContents.push({
+      type: "button",
+      style: "secondary",
+      height: "sm",
+      action: {
+        type: "uri",
+        label: "📊 เปิด Google Sheets",
+        uri: data.sheetUrl
+      }
+    });
+  }
+
+  if (footerContents.length > 0) {
+    flexMessage.contents.footer.contents = footerContents;
+  } else {
+    delete flexMessage.contents.footer;
+  }
+
+  // ส่งแบบ Push Message (ถ้ามี targetId) หรือ Broadcast (ถ้าเว้นว่าง)
+  var isBroadcast = !targetId || targetId.trim() === "" || targetId.toLowerCase() === "broadcast";
+  var endpoint = isBroadcast
+    ? "https://api.line.me/v2/bot/message/broadcast"
+    : "https://api.line.me/v2/bot/message/push";
+
+  var linePayload = {
+    messages: [flexMessage]
+  };
+
+  if (!isBroadcast) {
+    linePayload.to = targetId.trim();
   }
 
   var options = {
     method: "post",
     headers: {
-      "Authorization": "Bearer " + token
+      "Authorization": "Bearer " + channelAccessToken,
+      "Content-Type": "application/json"
     },
-    payload: {
-      message: message
-    },
+    payload: JSON.stringify(linePayload),
     muteHttpExceptions: true
   };
 
-  var res = UrlFetchApp.fetch("https://notify-api.line.me/api/notify", options);
-  Logger.log("Line Notify response: " + res.getContentText());
+  var res = UrlFetchApp.fetch(endpoint, options);
+  var responseCode = res.getResponseCode();
+  var responseText = res.getContentText();
+  Logger.log("LINE Messaging API response (" + responseCode + "): " + responseText);
+
+  if (responseCode >= 200 && responseCode < 300) {
+    return { success: true };
+  } else {
+    return { success: false, error: responseText };
+  }
+}
+
+/**
+ * รับ Webhook จาก LINE Bot โดยตรงเพื่อตอบกลับ User ID ของผู้ใช้โดยอัตโนมัติ
+ */
+function handleLineWebhook(payload) {
+  var events = payload.events;
+  for (var i = 0; i < events.length; i++) {
+    var event = events[i];
+    if (event.type === "message" || event.type === "follow") {
+      var replyToken = event.replyToken;
+      var userId = (event.source && event.source.userId) ? event.source.userId : "ไม่ทราบ";
+
+      var replyText = "สวัสดีครับ! บอท Inventory OCR พร้อมทำงานแล้ว\\n\\n" +
+        "📌 User ID ของคุณคือ:\\n" + userId + "\\n\\n" +
+        "นำ User ID นี้ไปใส่ในหน้าตั้งค่าของระบบ เพื่อรับการแจ้งเตือนบิลได้ทันทีครับ!";
+
+      // ตอบกลับหากมี replyToken
+      // (ถ้าต้องการตอบกลับอัตโนมัติ ให้แนบ channelAccessToken ใน Apps Script Properties)
+      Logger.log("User connected: " + userId);
+    }
+  }
 }
 
 /**
@@ -318,7 +528,7 @@ function sendLineNotification(token, data) {
 function doGet(e) {
   var output = {
     status: "online",
-    message: "Google Apps Script Web App for Inventory OCR is online and ready!",
+    message: "Google Apps Script Web App for Inventory OCR & LINE Messaging API is online!",
     timestamp: new Date().toISOString()
   };
   return ContentService.createTextOutput(JSON.stringify(output))

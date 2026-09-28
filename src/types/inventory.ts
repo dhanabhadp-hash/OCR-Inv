@@ -31,7 +31,9 @@ export interface GasSettings {
   driveFolderId: string;
   sheetId: string;
   sheetName: string;
-  lineNotifyToken: string;
+  // LINE Messaging API (แทนที่ LINE Notify ที่ปิดให้บริการแล้ว)
+  lineChannelAccessToken: string;
+  lineTargetId: string; // User ID (U...), Group ID (C...), หรือเว้นว่าง/broadcast เพื่อส่งทุกคน
 }
 
 export interface ScanRecord {

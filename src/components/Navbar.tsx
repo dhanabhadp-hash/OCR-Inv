@@ -34,7 +34,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
-                สแกนบิลสินค้า • Google Sheets &amp; Drive • Line Notify
+                สแกนบิลสินค้า • Google Sheets &amp; Drive • LINE OA Chatbot
               </p>
             </div>
           </div>

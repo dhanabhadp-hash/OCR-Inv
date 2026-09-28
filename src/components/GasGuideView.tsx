@@ -57,7 +57,7 @@ export const GasGuideView: React.FC = () => {
               สคริปต์ Google Apps Script (Code.gs) &amp; คู่มือการเชื่อมต่อ
             </h2>
             <p className="text-xs sm:text-sm text-blue-200 mt-1 max-w-2xl">
-              บันทึกไฟล์ภาพขึ้น Google Drive อัตโนมัติ, บันทึกข้อความ OCR ลง Google Sheets ในรูปแบบตาราง 17 คอลัมน์, และส่งข้อความแจ้งเตือนผ่าน Line Notify ทันทีที่ทำรายการเสร็จ
+              บันทึกไฟล์ภาพขึ้น Google Drive อัตโนมัติ, บันทึกข้อความ OCR ลง Google Sheets ในรูปแบบตาราง 17 คอลัมน์, และส่งการ์ดแจ้งเตือนผ่าน LINE OA Chatbot (LINE Messaging API) ทันทีที่ทำรายการเสร็จ
             </p>
           </div>
 

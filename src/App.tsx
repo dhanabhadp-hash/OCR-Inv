@@ -40,14 +40,25 @@ export default function App() {
   const [settings, setSettings] = useState<GasSettings>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_SETTINGS);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          gasUrl: parsed.gasUrl || '',
+          driveFolderId: parsed.driveFolderId || '',
+          sheetId: parsed.sheetId || '',
+          sheetName: parsed.sheetName || 'บิล Inventory',
+          lineChannelAccessToken: parsed.lineChannelAccessToken || parsed.lineNotifyToken || '',
+          lineTargetId: parsed.lineTargetId || '',
+        };
+      }
     } catch {}
     return {
       gasUrl: '',
       driveFolderId: '',
       sheetId: '',
       sheetName: 'บิล Inventory',
-      lineNotifyToken: '',
+      lineChannelAccessToken: '',
+      lineTargetId: '',
     };
   });
 
@@ -180,7 +191,8 @@ export default function App() {
         driveFolderId: settings.driveFolderId,
         sheetId: settings.sheetId,
         sheetName: settings.sheetName || 'บิล Inventory',
-        lineNotifyToken: settings.lineNotifyToken,
+        lineChannelAccessToken: settings.lineChannelAccessToken,
+        lineTargetId: settings.lineTargetId,
       };
 
       const response = await fetch('/api/sync-gas', {
@@ -221,7 +233,7 @@ export default function App() {
         })
       );
 
-      const lineStatusMsg = result.data?.lineNotification === 'sent' ? ' และส่งการแจ้งเตือนเข้า Line Notify แล้ว' : '';
+      const lineStatusMsg = result.data?.lineNotification === 'sent' ? ' และส่งการแจ้งเตือนเข้า LINE Official Account แล้ว' : '';
 
       showToast(
         'success',
@@ -270,7 +282,7 @@ export default function App() {
         setActiveTab={setActiveTab}
         historyCount={historyRecords.length}
         hasGasConfigured={!!settings.gasUrl}
-        hasLineConfigured={!!settings.lineNotifyToken}
+        hasLineConfigured={!!settings.lineChannelAccessToken}
       />
 
       {/* Toast Notification Banner */}
@@ -352,11 +364,57 @@ export default function App() {
 
             {/* Error Message if OCR fails */}
             {ocrError && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl p-4 flex items-start gap-3 text-sm">
-                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold">เกิดข้อผิดพลาดในการประมวลผล OCR</h4>
-                  <p className="text-xs text-rose-700 mt-0.5">{ocrError}</p>
+              <div className="bg-rose-50 border border-rose-200 text-rose-900 rounded-2xl p-5 shadow-sm space-y-3">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-sm sm:text-base text-rose-900">
+                      การสแกน OCR ไม่สำเร็จ: ตรวจพบข้อจำกัดสิทธิ์การเข้าถึง API (403 PERMISSION_DENIED)
+                    </h4>
+                    <p className="text-xs text-rose-700 leading-relaxed font-mono bg-rose-100/60 p-2 rounded-lg">
+                      {ocrError}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-rose-200 pt-3 text-xs text-rose-800 space-y-2">
+                  <p className="font-semibold text-rose-900">📌 สาเหตุและวิธีแก้ไขปัญหาข้อผิดพลาดนี้:</p>
+                  <ul className="list-disc list-inside space-y-1 pl-1 text-rose-700">
+                    <li>
+                      <strong>สาเหตุ:</strong> Google Cloud Project ที่ผูกกับ API Key ใน AI Studio กำลังติดข้อจำกัดสิทธิ์ หรือยังไม่ได้เปิดใช้งาน Generative Language API
+                    </li>
+                    <li>
+                      <strong>วิธีแก้ไข:</strong> เข้าไปที่{' '}
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline font-semibold text-blue-700 hover:text-blue-900 inline-flex items-center gap-0.5"
+                      >
+                        Google AI Studio API Keys <ExternalLink className="w-3 h-3 inline" />
+                      </a>{' '}
+                      แล้วสร้างหรือเลือก API Key จากโปรเจกต์ Google Cloud ใหม่ แล้วนำไปใส่ในเมนู <strong>Settings &gt; Secrets</strong> ของ AI Studio
+                    </li>
+                  </ul>
+
+                  <div className="pt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-rose-900 font-medium">ระหว่างนี้ท่านสามารถทดสอบระบบต่อได้ทันที:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const sample = import('./utils/sampleInvoices').then(({ SAMPLE_INVOICES, generateSampleInvoiceImage }) => {
+                          const s = SAMPLE_INVOICES[0];
+                          const img = generateSampleInvoiceImage(s);
+                          handleSelectSampleDirectly(s, img);
+                          setOcrError(null);
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-xs transition-colors flex items-center gap-1.5"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>โหลดข้อมูลบิลตัวอย่างเพื่อทดสอบบันทึกชีท &amp; LINE ทันที</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

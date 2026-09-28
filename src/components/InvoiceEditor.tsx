@@ -593,7 +593,7 @@ export const InvoiceEditor: React.FC<InvoiceEditorProps> = ({
             ) : (
               <>
                 <CloudUpload className="w-5 h-5" />
-                <span>บันทึกลง Google Sheets &amp; Drive (พร้อมแจ้งเตือน Line)</span>
+                <span>บันทึกลง Google Sheets &amp; Drive (พร้อมแจ้งเตือนผ่าน LINE OA)</span>
               </>
             )}
           </button>

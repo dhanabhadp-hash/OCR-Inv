@@ -12,7 +12,12 @@ import {
   Send,
   HelpCircle,
   Save,
-  CheckCircle2
+  CheckCircle2,
+  Bot,
+  MessageSquare,
+  Sparkles,
+  Info,
+  Users
 } from 'lucide-react';
 import { GasSettings } from '../types/inventory';
 
@@ -75,7 +80,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               salesperson: 'ผู้ดูแลระบบ',
               grandTotalWithVat: 107.00,
               isDocVatIncluded: true,
-              vatAnalysisExplanation: 'ทดสอบการเชื่อมต่อ Apps Script Web App',
+              vatAnalysisExplanation: 'ทดสอบการเชื่อมต่อ Apps Script Web App และ LINE Messaging API',
             },
             items: [
               {
@@ -90,7 +95,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             sheetName: formData.sheetName || 'บิล Inventory',
             driveFolderId: formData.driveFolderId,
             sheetId: formData.sheetId,
-            lineNotifyToken: formData.lineNotifyToken,
+            lineChannelAccessToken: formData.lineChannelAccessToken,
+            lineTargetId: formData.lineTargetId,
           },
         }),
       });
@@ -99,7 +105,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (res.ok && data.success) {
         setGasTestResult({
           success: true,
-          message: 'เชื่อมต่อ Google Apps Script สำเร็จแล้ว! ข้อมูลทดสอบถูกบันทึกลงใน Google Sheet แล้ว',
+          message: 'เชื่อมต่อ Google Apps Script สำเร็จแล้ว! ข้อมูลทดสอบถูกบันทึกลงใน Google Sheet แล้ว' + 
+            (data.data?.lineNotification === 'sent' ? ' และส่งการแจ้งเตือนเข้า LINE แล้ว' : ''),
         });
       } else {
         setGasTestResult({
@@ -117,12 +124,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  // Test Line Notify Token
+  // Test LINE Messaging API
   const handleTestLine = async () => {
-    if (!formData.lineNotifyToken) {
+    if (!formData.lineChannelAccessToken) {
       setLineTestResult({
         success: false,
-        message: 'กรุณากรอก Line Notify Access Token ก่อนทดสอบ',
+        message: 'กรุณากรอก LINE Channel Access Token ก่อนทดสอบ',
       });
       return;
     }
@@ -135,8 +142,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: formData.lineNotifyToken,
-          message: '🔔 [ทดสอบระบบ] การเชื่อมต่อ Line Notify จากระบบ Inventory OCR สำเร็จแล้ว!',
+          channelAccessToken: formData.lineChannelAccessToken,
+          targetId: formData.lineTargetId,
+          message: '🔔 [ทดสอบระบบ] การเชื่อมต่อ LINE Chatbot (Messaging API) จากระบบ Inventory OCR ทำงานได้ปกติ!\nเวลา: ' + new Date().toLocaleString('th-TH'),
         }),
       });
 
@@ -144,12 +152,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (res.ok && data.success) {
         setLineTestResult({
           success: true,
-          message: 'ส่งข้อความทดสอบเข้า Line ของคุณเรียบร้อยแล้ว กรุณาเปิดดูในแอป Line!',
+          message: data.message || 'ส่งข้อความทดสอบเข้า LINE เรียบร้อยแล้ว กรุณาเปิดดูในแอป LINE!',
         });
       } else {
         setLineTestResult({
           success: false,
-          message: data.error || 'Token ไม่ถูกต้อง หรือยังไม่ได้เชิญ Line Notify เข้ากลุ่ม',
+          message: data.error || 'การส่งข้อความไม่สำเร็จ กรุณาตรวจสอบ Token และสิทธิ์ของบอท',
         });
       }
     } catch (err: any) {
@@ -170,10 +178,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div>
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <Settings className="w-6 h-6 text-blue-600" />
-              <span>ตั้งค่าการเชื่อมต่อ Google Sheets, Drive และ Line Notify</span>
+              <span>ตั้งค่าการเชื่อมต่อ Google Sheets, Drive และ LINE OA Chatbot</span>
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              กำหนด Web App URL จาก Google Apps Script เพื่อจัดเก็บไฟล์ภาพลง Drive, เก็บข้อความลง Google Sheets และส่งแจ้งเตือนผ่าน Line Notify
+              กำหนด Web App URL จาก Google Apps Script และ LINE Messaging API เพื่อจัดเก็บไฟล์ภาพลง Drive, บันทึกข้อความลง Google Sheets และส่งการ์ดสรุปบิลผ่าน LINE
             </p>
           </div>
 
@@ -183,7 +191,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium text-xs border border-blue-200 transition-colors self-start sm:self-auto"
           >
             <Code className="w-4 h-4" />
-            <span>ดูโค้ด &amp; วิธีติดตั้ง Google Apps Script</span>
+            <span>ดูโค้ด &amp; วิธีติดตั้ง Apps Script</span>
           </button>
         </div>
       </div>
@@ -322,60 +330,102 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* Section 3: Line Notify Token */}
+        {/* Section 3: LINE Messaging API (LINE Official Account / Chatbot) */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-              <Bell className="w-5 h-5 text-emerald-600" />
-              <span>3. แจ้งเตือนผ่าน Line Notify อัตโนมัติ</span>
-            </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white">
+                <MessageSquare className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">
+                  3. ระบบแจ้งเตือนผ่าน LINE Chatbot (LINE Messaging API / LINE OA)
+                </h3>
+                <span className="text-[11px] text-emerald-700 font-medium">
+                  ทดแทน LINE Notify ที่ยุติการให้บริการอย่างสมบูรณ์ ด้วย Flex Message การ์ดสวยงาม
+                </span>
+              </div>
+            </div>
+
             <a
-              href="https://notify-bot.line.me/my/"
+              href="https://developers.line.biz/console/"
               target="_blank"
               rel="noreferrer"
-              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
+              className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1 transition-colors self-start sm:self-auto shrink-0"
             >
-              <span>วิธีขอ Line Token</span>
+              <span>LINE Developers Console</span>
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
 
+          {/* Quick Notice Banner */}
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1.5 leading-relaxed">
+            <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+              <Info className="w-4 h-4 text-blue-600" />
+              <span>วิธีรับ Channel Access Token ใน 3 นาที:</span>
+            </div>
+            <ol className="list-decimal list-inside space-y-1 text-slate-600 pl-1">
+              <li>ล็อกอินที่ <a href="https://developers.line.biz/console/" target="_blank" rel="noreferrer" className="text-blue-600 underline">LINE Developers Console</a> แล้วเลือก/สร้าง Channel ชนิด <strong>Messaging API</strong> (LINE OA)</li>
+              <li>ไปที่แท็บ <strong>&quot;Messaging API&quot;</strong> เลื่อนลงด้านล่างสุดที่หัวข้อ <strong>&quot;Channel access token (long-lived)&quot;</strong> แล้วกดปุ่ม <strong>Issue</strong></li>
+              <li>คัดลอก Token มาวางในช่องด้านล่างนี้</li>
+              <li><strong>Target User ID (ตัวเลือกเสริม):</strong> คัดลอก &quot;Your user ID&quot; จากแท็บ <em>Basic settings</em> หรือเว้นว่างไว้เพื่อส่งแบบ <strong>Broadcast</strong> ถึงทุกคนที่ติดตามบอท</li>
+            </ol>
+          </div>
+
+          {/* Input: Channel Access Token */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Line Notify Access Token:
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+              <span>Channel Access Token (long-lived):</span>
+              <span className="text-rose-500 font-bold">*</span>
+            </label>
+            <textarea
+              rows={2}
+              value={formData.lineChannelAccessToken}
+              onChange={(e) => handleInputChange('lineChannelAccessToken', e.target.value)}
+              placeholder="วาง Channel Access Token ยาวๆ เช่น eyJhbGciOi... หรือ v1+..."
+              className="w-full px-3.5 py-2 text-xs font-mono rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none transition-all resize-y"
+            />
+          </div>
+
+          {/* Input: Target User ID / Group ID */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <Users className="w-3.5 h-3.5 text-slate-500" />
+                <span>Target User ID / Group ID (ไม่บังคับ):</span>
+              </span>
+              <span className="text-[11px] text-slate-400 font-normal">หากเว้นว่าง ระบบจะส่งแบบ Broadcast</span>
             </label>
             <input
               type="text"
-              value={formData.lineNotifyToken}
-              onChange={(e) => handleInputChange('lineNotifyToken', e.target.value)}
-              placeholder="วาง Token เช่น l7K2k3m4n5..."
-              className="w-full px-3.5 py-2.5 text-sm font-mono rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none transition-all"
+              value={formData.lineTargetId}
+              onChange={(e) => handleInputChange('lineTargetId', e.target.value)}
+              placeholder="เช่น U1234567890abcdef... (User ID ขึ้นต้นด้วย U, Group ID ขึ้นต้นด้วย C หรือเว้นว่าง)"
+              className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none transition-all"
             />
-            <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
-              เมื่อบันทึกข้อมูลสำเร็จ ระบบจะส่งแจ้งเตือน: ชื่อบริษัท, เลขที่บิล, วันที่, พนักงานขาย, จำนวนสินค้า, ยอดสุทธิรวม VAT 7% และลิงก์รูปภาพใน Google Drive
-            </p>
           </div>
 
+          {/* Test Line Button */}
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
               type="button"
-              disabled={isTestingLine || !formData.lineNotifyToken}
+              disabled={isTestingLine || !formData.lineChannelAccessToken}
               onClick={handleTestLine}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
-                isTestingLine || !formData.lineNotifyToken
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all border ${
+                isTestingLine || !formData.lineChannelAccessToken
                   ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                  : 'bg-white text-emerald-700 hover:bg-emerald-50 border-emerald-300 active:scale-95 shadow-xs'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 active:scale-95 shadow-xs'
               }`}
             >
               {isTestingLine ? (
                 <>
-                  <div className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-                  <span>กำลังทดสอบส่งข้อความ...</span>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>กำลังส่งข้อความทดสอบไปยัง LINE...</span>
                 </>
               ) : (
                 <>
-                  <Send className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>ทดสอบส่งแจ้งเตือนเข้า Line Notify</span>
+                  <Bot className="w-4 h-4" />
+                  <span>ทดสอบส่งข้อความแจ้งเตือนผ่าน LINE Chatbot</span>
                 </>
               )}
             </button>
